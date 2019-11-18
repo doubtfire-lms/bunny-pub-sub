@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'dotenv/load'
-require_relative '../lib/overseer-pub-sub/publisher.rb'
+require_relative '../lib/bunny-pub-sub/publisher.rb'
 
 # Zip files are not committed to the repo.
 # Please request them if needed.

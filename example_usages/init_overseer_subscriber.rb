@@ -2,8 +2,8 @@
 
 require 'dotenv/load'
 require_relative 'overseer_receive_action.rb'
-require_relative '../lib/overseer-pub-sub/subscriber.rb'
-require_relative '../lib/overseer-pub-sub/publisher.rb'
+require_relative '../lib/bunny-pub-sub/subscriber.rb'
+require_relative '../lib/bunny-pub-sub/publisher.rb'
 
 subscriber_config = {
   RABBITMQ_HOSTNAME: ENV['RABBITMQ_HOSTNAME'],
