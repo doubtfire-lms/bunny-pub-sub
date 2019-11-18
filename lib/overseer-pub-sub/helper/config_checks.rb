@@ -28,6 +28,8 @@ def valid_config?(config)
   flag
 end
 
+# Subscriber only checks BEGIN =================================================
+# ==============================================================================
 def valid_binding_keys?(language_environments, type='topic')
   # TODO: Exchanges of type `topic` PROBABLY can't simply have multiple
   # words like `direct` exchanges.
@@ -79,6 +81,11 @@ def at_least_one_binding_key_exists?(config)
   end
 end
 
+# Subscriber only checks END ===================================================
+# ==============================================================================
+
+# Publisher only checks BEGIN ==================================================
+# ==============================================================================
 def routing_key_exists?(config)
   if config[:ROUTING_KEY].nil? ||
      config[:ROUTING_KEY]&.strip&.empty?
@@ -88,3 +95,6 @@ def routing_key_exists?(config)
     true
   end
 end
+
+# Publisher only checks END ====================================================
+# ==============================================================================
