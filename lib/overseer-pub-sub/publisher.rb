@@ -42,8 +42,6 @@ class Publisher
   end
 
   def publish_message(msg)
-    # TODO: This should be publisher specific routing key/topic.
-    # In OnTrack, this will come from the task definition itself.
     @exchange.publish(msg.to_json, routing_key: @config[:ROUTING_KEY], persistent: true)
     puts ' [x] Message sent!'
   end
