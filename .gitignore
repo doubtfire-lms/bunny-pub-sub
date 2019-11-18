@@ -5,3 +5,4 @@ dev_files
 test.rb
 .byebug_history
 .vscode
+*.gem
