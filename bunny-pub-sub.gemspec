@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
     s.name                  = 'bunny-pub-sub'
-    s.version               = '0.0.1'
+    s.version               = '0.0.2'
     s.date                  = '2019-11-18'
     s.summary               = 'bunny-pub-sub'
     s.description           = 'Bunny publisher/subscriber client gem'\
@@ -10,7 +10,7 @@ Gem::Specification.new do |s|
     s.authors               = ['Akash Agarwal']
     s.email                 = 'agarwal.akash333@gmail.com'
     s.license               = 'MIT'
-    s.required_ruby_version = '>= 2.5.3'
+    s.required_ruby_version = '>= 2.3.1'
     s.files                 = ['lib/bunny-pub-sub/publisher.rb',
                                'lib/bunny-pub-sub/subscriber.rb',
                                'lib/bunny-pub-sub/helper/config_checks.rb']

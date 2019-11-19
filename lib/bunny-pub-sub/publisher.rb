@@ -41,8 +41,25 @@ class Publisher
     set_topic_exchange
   end
 
-  def publish_message(msg)
-    @exchange.publish(msg.to_json, routing_key: @config[:ROUTING_KEY], persistent: true)
+  def set_default_routing_key(routing_key)
+    if routing_key.nil? || routing_key&.strip&.empty?
+      return 'routing_key must be defined and must not be empty'
+    end
+
+    @config[:ROUTING_KEY] = routing_key
+  end
+
+  def unset_default_routing_key
+    @config[:ROUTING_KEY] = nil
+  end
+
+  def publish_message(msg, routing_key=nil)
+    if (routing_key.nil? || routing_key&.strip&.empty?) &&
+       (@config[:ROUTING_KEY].nil? || @config[:ROUTING_KEY]&.strip&.empty?)
+      return 'No default routing key exists in config. You must specify one.'
+    end
+
+    @exchange.publish(msg.to_json, routing_key: routing_key || @config[:ROUTING_KEY], persistent: true)
     puts ' [x] Message sent!'
   end
 
