@@ -92,7 +92,7 @@ class Subscriber
     begin
       puts ' [*] Waiting for messages. To exit press CTRL+C'
 
-      @consumer = queue.subscribe(manual_ack: true, block: false) do |delivery_info, properties, params|
+      @consumer = queue.subscribe(manual_ack: true, block: true) do |delivery_info, properties, params|
         callback.call(@channel, @results_publisher, delivery_info, properties, params)
       end
     rescue Interrupt => _e
