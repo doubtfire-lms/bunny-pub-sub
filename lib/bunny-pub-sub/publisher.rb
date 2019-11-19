@@ -41,9 +41,10 @@ class Publisher
     set_topic_exchange
   end
 
-  def set_default_routing_key(routing_key)
+  def default_routing_key=(routing_key)
     if routing_key.nil? || routing_key&.strip&.empty?
-      return 'routing_key must be defined and must not be empty'
+      puts 'routing_key must be defined and must not be empty'
+      return
     end
 
     @config[:ROUTING_KEY] = routing_key
