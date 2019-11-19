@@ -19,7 +19,7 @@ class ErrorReporter < RuntimeError
   def initialize(message, status = 400)
     unless @@publisher.nil?
       @@publisher.connect_publisher
-      @@publisher.publish_message msg
+      @@publisher.publish_message message
       @@publisher.disconnect_publisher
     end
     @status = status
@@ -43,11 +43,11 @@ class Subscriber
     end
   end
 
-  def self.client_error!(message, status, _headers = {}, _backtrace = [])
+  def client_error!(message, status, _headers = {}, _backtrace = [])
     raise ClientException.new message, status
   end
 
-  def self.server_error!(message, status, _headers = {}, _backtrace = [])
+  def server_error!(message, status, _headers = {}, _backtrace = [])
     raise ServerException.new message, status
   end
 
@@ -93,7 +93,7 @@ class Subscriber
       puts ' [*] Waiting for messages. To exit press CTRL+C'
 
       @consumer = queue.subscribe(manual_ack: true, block: true) do |delivery_info, properties, params|
-        callback.call(@channel, @results_publisher, delivery_info, properties, params)
+        callback.call(self, @channel, @results_publisher, delivery_info, properties, params)
       end
     rescue Interrupt => _e
       @channel.close
@@ -114,8 +114,10 @@ class Subscriber
     @connection.close
   end
 
-  private_constant :ServerException
-  private_constant :ClientException
+  # We can't privatize the exception classes because they are being
+  # used in rescue blocks.
+  # private_constant :ServerException
+  # private_constant :ClientException
 end
 
 def register_subscriber(subscriber_config,

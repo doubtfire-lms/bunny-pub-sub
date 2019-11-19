@@ -3,8 +3,9 @@
 require 'zip'
 
 def ack_result(results_publisher, value, task_id)
-  msg = { message: value, task_id: task_id }
   return if results_publisher.nil?
+
+  msg = { message: value, task_id: task_id }
 
   results_publisher.connect_publisher
   results_publisher.publish_message msg
@@ -84,24 +85,24 @@ def cleanup_after_your_own_mess(path)
   FileUtils.rm_rf path
 end
 
-def receive(channel, results_publisher, delivery_info, _properties, params)
+def receive(subscriber_instance, channel, results_publisher, delivery_info, _properties, params)
   params = JSON.parse(params)
   puts params
 
   if params['task_id'].nil? || !params['task_id'].is_a?(Integer)
-    client_error!({ error: "Invalid task_id: #{params['task_id']}" }, 400)
+    subscriber_instance.client_error!({ error: "Invalid task_id: #{params['task_id']}" }, 400)
   end
   unless File.exist? params['submission']
-    client_error!({ error: "Zip file not found: #{params['submission']}" }, 400)
+    subscriber_instance.client_error!({ error: "Zip file not found: #{params['submission']}" }, 400)
   end
   unless File.exist? params['assessment']
-    client_error!({ error: "Zip file not found: #{params['assessment']}" }, 400)
+    subscriber_instance.client_error!({ error: "Zip file not found: #{params['assessment']}" }, 400)
   end
   unless valid_zip? params['submission']
-    client_error!({ error: "Invalid zip file: #{params['submission']}" }, 400)
+    subscriber_instance.client_error!({ error: "Invalid zip file: #{params['submission']}" }, 400)
   end
   unless valid_zip? params['assessment']
-    client_error!({ error: "Invalid zip file: #{params['assessment']}" }, 400)
+    subscriber_instance.client_error!({ error: "Invalid zip file: #{params['assessment']}" }, 400)
   end
 
   output_loc = get_task_path params['task_id']
@@ -117,18 +118,18 @@ def receive(channel, results_publisher, delivery_info, _properties, params)
   puts result
 
   # channel.ack(delivery_info.delivery_tag)
-rescue ClientException => _e
+rescue Subscriber::ClientException => e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  client_error!({ error: e.message }, e.status)
-rescue ServerException
+  subscriber_instance.client_error!({ error: e.message }, e.status)
+rescue Subscriber::ServerException
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
 rescue StandardError => _e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
 else
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
