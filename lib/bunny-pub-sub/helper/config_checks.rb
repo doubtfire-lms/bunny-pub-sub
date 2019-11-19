@@ -1,4 +1,9 @@
 def valid_config?(config)
+  if config.nil?
+    puts 'CONFIG must not be nil'
+    return false
+  end
+
   flag = true
   if config[:RABBITMQ_HOSTNAME].nil? ||
      config[:RABBITMQ_HOSTNAME]&.strip&.empty?
