@@ -1,35 +1,38 @@
-def valid_config?(config)
-  if config.nil?
-    puts 'CONFIG must not be nil'
-    return false
-  end
+# frozen_string_literal: true
 
-  flag = true
+class ConfigError < StandardError; end
+
+def valid_config?(config)
+  raise ConfigError, 'CONFIG must not be nil' if config.nil?
+
+  flag = true, error_msgs = []
   if config[:RABBITMQ_HOSTNAME].nil? ||
      config[:RABBITMQ_HOSTNAME]&.strip&.empty?
-    puts 'Must define config variable RABBITMQ_HOSTNAME'
+    error_msgs << 'Must define config variable RABBITMQ_HOSTNAME'
     flag = false
   end
   if config[:RABBITMQ_USERNAME].nil? ||
      config[:RABBITMQ_USERNAME]&.strip&.empty?
-    puts 'Must define config variable RABBITMQ_USERNAME'
+    error_msgs << 'Must define config variable RABBITMQ_USERNAME'
     flag = false
   end
   if config[:RABBITMQ_PASSWORD].nil? ||
      config[:RABBITMQ_PASSWORD]&.strip&.empty?
-    puts 'Must define config variable RABBITMQ_PASSWORD'
+    error_msgs << 'Must define config variable RABBITMQ_PASSWORD'
     flag = false
   end
   if config[:EXCHANGE_NAME].nil? ||
      config[:EXCHANGE_NAME]&.strip&.empty?
-    puts 'Must define config variable EXCHANGE_NAME'
+    error_msgs << 'Must define config variable EXCHANGE_NAME'
     flag = false
   end
   if config[:DURABLE_QUEUE_NAME].nil? ||
      config[:DURABLE_QUEUE_NAME]&.strip&.empty?
-    puts 'Must define config variable DURABLE_QUEUE_NAME'
+    error_msgs << 'Must define config variable DURABLE_QUEUE_NAME'
     flag = false
   end
+  raise ConfigError, error_msgs unless flag
+
   flag
 end
 
