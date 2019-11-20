@@ -16,7 +16,7 @@ class ServicesManager
                       action = nil,
                       results_publisher = nil)
 
-    return unless valid_name? name
+    return unless valid_name? name, true
     unless @clients[name].nil?
       return puts "Service with the name: #{name} already registered"
     end
@@ -29,7 +29,7 @@ class ServicesManager
     return @clients[name] if subscriber_config.nil?
 
     if action.nil?
-      @clients.create_subscriber_without_action(
+      @clients[name].create_subscriber_without_action(
         subscriber_config, results_publisher
       )
       return @clients[name]
@@ -79,23 +79,29 @@ class ServicesManager
   end
 
   private
-  def not_found(name)
+  def service_exists?(name)
+    return true unless @clients[name].nil?
+
     puts "Service with the name: #{name} not found"
     false
   end
 
-  def must_be_symbol(name)
+  def name_is_symbol?(name)
+    return true if name.is_a? Symbol
+
     puts "NAME: #{name} must be a symbol"
     false
   end
 
-  def valid_name?(name)
+  def valid_name?(name, new_service=false)
     if name.nil?
       puts "NAME must be a defined symbol and can't be empty"
       return false
     end
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return false if !new_service && !service_exists?(name)
+    return false unless name_is_symbol? name
+
+    true
   end
 
   class RabbitServiceClient
