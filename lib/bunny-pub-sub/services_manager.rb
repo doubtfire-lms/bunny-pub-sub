@@ -16,8 +16,7 @@ class ServicesManager
                       action = nil,
                       results_publisher = nil)
 
-    return puts "NAME must be a defined symbol and can't be empty" if name.nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
     unless @clients[name].nil?
       return puts "Service with the name: #{name} already registered"
     end
@@ -25,8 +24,16 @@ class ServicesManager
     @clients[name] = RabbitServiceClient.new name
     return @clients[name] if publisher_config.nil?
 
+    # Note: results_publisher CAN be nil.
     @clients[name].create_publisher publisher_config
-    return @clients[name] if subscriber_config.nil? || action.nil?
+    return @clients[name] if subscriber_config.nil?
+
+    if action.nil?
+      @clients.create_subscriber_without_action(
+        subscriber_config, results_publisher
+      )
+      return @clients[name]
+    end
 
     @clients[name].create_and_start_subscriber(
       subscriber_config, action, results_publisher
@@ -36,15 +43,13 @@ class ServicesManager
   end
 
   def create_client_publisher(name, config)
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
 
     @clients[name].create_publisher config
   end
 
   def remove_client_publisher(name)
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
 
     @clients[name].remove_publisher
   end
@@ -52,8 +57,7 @@ class ServicesManager
   def create_and_start_client_subscriber(
     name, subscriber_config, action, results_publisher
   )
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
 
     @clients[name].create_and_start_subscriber(
       subscriber_config, action, results_publisher
@@ -61,15 +65,13 @@ class ServicesManager
   end
 
   def cancel_and_remove_client_subscriber(name)
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
 
     @clients[name].cancel_and_remove_subscriber
   end
 
   def deregister_client(name)
-    return not_found name if @clients[name].nil?
-    return must_be_symbol name unless name.is_a? Symbol
+    return unless valid_name? name
 
     @clients[name].remove_all
     @clients[name] = nil
@@ -79,10 +81,21 @@ class ServicesManager
   private
   def not_found(name)
     puts "Service with the name: #{name} not found"
+    false
   end
 
   def must_be_symbol(name)
     puts "NAME: #{name} must be a symbol"
+    false
+  end
+
+  def valid_name?(name)
+    if name.nil?
+      puts "NAME must be a defined symbol and can't be empty"
+      return false
+    end
+    return not_found name if @clients[name].nil?
+    return must_be_symbol name unless name.is_a? Symbol
   end
 
   class RabbitServiceClient
@@ -95,6 +108,7 @@ class ServicesManager
     end
 
     def create_publisher(publisher_config)
+      publisher_created?
       @publisher = Publisher.new publisher_config
     end
 
@@ -104,12 +118,39 @@ class ServicesManager
       @publisher = nil
     end
 
+    def action=(action)
+      valid_action? action
+      @action = action
+    end
+
+    def create_subscriber_without_action(subscriber_config,
+                                         results_publisher)
+
+      subscriber_created?
+
+      @subscriber_config = subscriber_config
+      @results_publisher = results_publisher
+      @subscriber = Subscriber.new subscriber_config, results_publisher
+    end
+
     def create_and_start_subscriber(subscriber_config,
                                     action,
                                     results_publisher)
 
+      subscriber_created?
+
+      @subscriber_config = subscriber_config
+      @results_publisher = results_publisher
+
+      valid_action? action
+      @action = action
+
       @subscriber = Subscriber.new subscriber_config, results_publisher
-      @subscriber.start_subscriber(action)
+      start_subscriber
+    end
+
+    def start_subscriber
+      @subscriber.start_subscriber(@action)
     end
 
     def cancel_and_remove_subscriber
@@ -122,6 +163,38 @@ class ServicesManager
     def remove_all
       remove_publisher
       cancel_and_remove_subscriber
+    end
+
+    private
+    def subscriber_created?
+      return if @subscriber.nil?
+
+      raise 'A subscriber for this service client'\
+        ' has already been created and can\'t be'\
+        ' created again. Please create a new RabbitServiceClient.'
+    end
+
+    def publisher_created?
+      return if @publisher.nil?
+
+      raise 'A publisher for this service client'\
+        ' has already been created and can\'t be'\
+        ' created again. Please create a new RabbitServiceClient.'
+    end
+
+    def valid_action?(action)
+      unless @action.nil?
+        raise 'An action has already been set'\
+        ' for this subscriber. A service\'s'\
+        ' action can only be set once.'
+      end
+
+      return unless action.nil?
+
+      raise 'Subscriber action can\'t be set to nil.'\
+      ' Halting the program.'
+
+      # TODO: Check if action is of the right type.
     end
   end
 end
