@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
     s.name                  = 'bunny-pub-sub'
-    s.version               = '0.0.6'
+    s.version               = '0.0.7'
     s.date                  = '2019-11-18'
     s.summary               = 'bunny-pub-sub'
     s.description           = 'Bunny publisher/subscriber client gem'\
