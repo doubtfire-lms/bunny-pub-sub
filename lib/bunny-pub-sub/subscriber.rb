@@ -103,6 +103,8 @@ class Subscriber
     end
   end
 
+  # TODO: Fix this. Probably doesn't work because
+  # @consumer has no value assigned to it.
   def cancel_subscriber
     @cancel_ok = @consumer.cancel
     puts 'Consumer cancelled:'
