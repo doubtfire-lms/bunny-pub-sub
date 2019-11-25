@@ -7,7 +7,10 @@ require_relative '../lib/bunny-pub-sub/publisher.rb'
 # Please request them if needed.
 msg = {
   submission: "dev_files/dvnguyen-Practical\ Task\ 1.2.zip",
-  assessment: "dev_files/assessment\ 2.zip",
+  assessment: "dev_files/assessment.zip",
+  timestamp: Time.now.utc.to_i,
+  zip_file: 1,
+  # skip_rm: 1,
   # TODO: Probably don't need this.
   # :project_id => 1,
 

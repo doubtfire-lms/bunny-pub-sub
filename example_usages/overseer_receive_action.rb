@@ -2,10 +2,10 @@
 
 require 'zip'
 
-def ack_result(results_publisher, value, task_id)
+def ack_result(results_publisher, value, task_id, timestamp)
   return if results_publisher.nil?
 
-  msg = { message: value, task_id: task_id }
+  msg = { message: value, task_id: task_id, timestamp: timestamp }
 
   results_publisher.connect_publisher
   results_publisher.publish_message msg
@@ -47,21 +47,22 @@ def get_task_path(task_id)
 end
 
 def get_docker_task_execution_path
-  '/Users/akashagarwal/ruby/overseer-pub-sub/lazarus_pit'
+  # Docker volumes needs absolute source and destination paths
+  "#{Dir.pwd}/lazarus_pit"
 end
 
 ##################################################################
 ##################################################################
 
 # Step 1 -- done
-def copy_student_files(s_path, path)
-  puts "Copying submission files"
-  `cp -R #{s_path}/. path`
+def copy_student_files(s_path, d_path)
+  puts 'Copying submission files'
+  `cp -R #{s_path}/. #{d_path}`
 end
 
-def extract_submission(zip_file, path)
-  puts "Extracting submission from zip file"
-  extract_zip zip_file, path
+def extract_submission(zip_file, d_path)
+  puts 'Extracting submission from zip file'
+  extract_zip zip_file, d_path
 end
 
 # Step 2 -- done
@@ -73,7 +74,7 @@ end
 def run_assessment_script(path)
   rpath = "#{path}/run.sh"
   unless File.exist? rpath
-    client_error!({ error: "File #{rpath} doesn't exist" }, 500)
+    client_error!({ error: "File #{rpath} doesn't exist" }, 400)
   end
   result = {}
 
@@ -85,13 +86,25 @@ def run_assessment_script(path)
   result
 end
 
-def run_assessment_script_via_docker(path, image = 'overseer/dotnet:2.2')
-  puts "Running docker executable.."
-  result = { run_result_message: `docker run -v#{path}:/lazarus_pit --rm #{image}` }
+def run_assessment_script_via_docker(host_path, tag = 'overseer/dotnet:2.2')
+  client_error!({ error: "A valid Docker image name:tag is needed" }, 400) if tag.nil? || tag.to_s.strip.empty?
+
+  puts 'Running docker executable..'
+  result = { run_result_message: `docker run -v#{host_path}:/lazarus_pit --rm #{tag}` }
   result
 end
 
 # Step 4
+def extract_result_files(s_path, task_id, timestamp)
+  client_error!({ error: "A valid timestamp is needed" }, 400) if timestamp.nil? || timestamp.to_s.strip.empty?
+
+  puts 'Extracting result files from the pit..'
+  dest = "results/#{task_id}/#{timestamp}"
+  FileUtils.mkdir_p dest
+  `cp -R #{s_path}/*_output.txt #{dest}`
+end
+
+# Step 5
 def cleanup_after_your_own_mess(path)
   return if path.nil?
   return unless File.exist? path
@@ -108,6 +121,7 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
   params = JSON.parse(params)
   return 'PARAM `submission` is required' if params['submission'].nil?
   return 'PARAM `assessment` is required' if params['assessment'].nil?
+  return 'PARAM `timestamp` is required' if params['timestamp'].nil?
   return 'PARAM `task_id` is required' if params['task_id'].nil?
 
   if ENV['RUBY_ENV'].nil? && ENV['RUBY_ENV'] == 'development'
@@ -118,48 +132,53 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
 
   puts params
 
-  unless params['task_id'].is_a?(Integer)
-    subscriber_instance.client_error!({ error: "Invalid task_id: #{params['task_id']}" }, 400)
+  submission = params['submission']
+  assessment = params['assessment']
+  timestamp = params['timestamp']
+  task_id = params['task_id']
+
+  unless task_id.is_a?(Integer)
+    subscriber_instance.client_error!({ error: "Invalid task_id: #{task_id}" }, 400)
   end
 
-  unless File.exist? params['submission']
-    # By default, Overseer will expect a folder path
+  unless File.exist? submission
     if valid_zip_file_param? params
-      subscriber_instance.client_error!({ error: "Zip file not found: #{params['submission']}" }, 400)
+      subscriber_instance.client_error!({ error: "Zip file not found: #{submission}" }, 400)
     else
-      subscriber_instance.client_error!({ error: "Folder not found: #{params['submission']}" }, 400)
+      # By default, Overseer will expect a folder path
+      subscriber_instance.client_error!({ error: "Folder not found: #{submission}" }, 400)
     end
   end
 
-  unless File.exist? params['assessment']
-    subscriber_instance.client_error!({ error: "Zip file not found: #{params['assessment']}" }, 400)
+  unless File.exist? assessment
+    subscriber_instance.client_error!({ error: "Zip file not found: #{assessment}" }, 400)
   end
 
-  unless valid_zip? params['submission']
-    subscriber_instance.client_error!({ error: "Invalid zip file: #{params['submission']}" }, 400)
+  unless valid_zip? submission
+    subscriber_instance.client_error!({ error: "Invalid zip file: #{submission}" }, 400)
   end
 
-  unless valid_zip? params['assessment']
-    subscriber_instance.client_error!({ error: "Invalid zip file: #{params['assessment']}" }, 400)
+  unless valid_zip? assessment
+    subscriber_instance.client_error!({ error: "Invalid zip file: #{assessment}" }, 400)
   end
 
-  output_loc = get_docker_task_execution_path || get_task_path(params['task_id'])
+  output_loc = get_docker_task_execution_path # get_task_path(task_id)
   puts "Output loc: #{output_loc}"
   FileUtils.mkdir_p output_loc
 
   skip_rm = params['skip_rm'] || 0
 
   if valid_zip_file_param? params
-    extract_submission params['submission'], output_loc
+    extract_submission submission, output_loc
   else
-    copy_student_files params['submission'], output_loc
+    copy_student_files submission, output_loc
   end
 
-  extract_assessment params['assessment'], output_loc
+  extract_assessment assessment, output_loc
 
-  # TODO: Pass a param for image name here
+  # TODO: Pass a param for tag name here
   result = run_assessment_script_via_docker output_loc
-  puts result
+  extract_result_files output_loc, task_id, timestamp
 
 rescue Subscriber::ClientException => e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
@@ -169,14 +188,14 @@ rescue Subscriber::ServerException => e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
-  subscriber_instance.server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id }, 500)
 rescue StandardError => e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
-  subscriber_instance.server_error!({ error: 'Internal server error', task_id: params['task_id'] }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id }, 500)
 else
   cleanup_after_your_own_mess output_loc if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  ack_result results_publisher, result, params['task_id'] # unless results_publisher.nil?
+  ack_result results_publisher, result, task_id, timestamp # unless results_publisher.nil?
 end

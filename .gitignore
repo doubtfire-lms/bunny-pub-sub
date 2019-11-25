@@ -6,3 +6,4 @@ test.rb
 .byebug_history
 .vscode
 *.gem
+results
