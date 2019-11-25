@@ -101,7 +101,7 @@ def extract_result_files(s_path, task_id, timestamp)
   puts 'Extracting result files from the pit..'
   dest = "results/#{task_id}/#{timestamp}"
   FileUtils.mkdir_p dest
-  `cp -R #{s_path}/*_output.txt #{dest}`
+  FileUtils.copy("#{s_path}/output.txt", dest)
 end
 
 # Step 5
