@@ -106,7 +106,6 @@ end
 
 def receive(subscriber_instance, channel, results_publisher, delivery_info, _properties, params)
   params = JSON.parse(params)
-  # TODO: make sure all the required params exist
   return 'PARAM `submission` is required' if params['submission'].nil?
   return 'PARAM `assessment` is required' if params['assessment'].nil?
   return 'PARAM `task_id` is required' if params['task_id'].nil?
