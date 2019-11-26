@@ -95,13 +95,12 @@ def run_assessment_script_via_docker(host_path, tag = 'overseer/dotnet:2.2')
 end
 
 # Step 4
-def extract_result_files(s_path, task_id, timestamp)
-  client_error!({ error: "A valid timestamp is needed" }, 400) if timestamp.nil? || timestamp.to_s.strip.empty?
+def extract_result_files(s_path, output_path)
+  client_error!({ error: "A valid output_path is needed" }, 400) if output_path.nil? || output_path.to_s.strip.empty?
 
-  puts 'Extracting result files from the pit..'
-  dest = "results/#{task_id}/#{timestamp}"
-  FileUtils.mkdir_p dest
-  FileUtils.copy("#{s_path}/output.txt", dest)
+  puts 'Extracting result file from the pit..'
+  FileUtils.mkdir_p output_path
+  FileUtils.copy("#{s_path}/output.txt", output_path)
 end
 
 # Step 5
@@ -119,19 +118,24 @@ end
 
 def receive(subscriber_instance, channel, results_publisher, delivery_info, _properties, params)
   params = JSON.parse(params)
+  return 'PARAM `output_path` is required' if params['output_path'].nil?
   return 'PARAM `submission` is required' if params['submission'].nil?
   return 'PARAM `assessment` is required' if params['assessment'].nil?
   return 'PARAM `timestamp` is required' if params['timestamp'].nil?
   return 'PARAM `task_id` is required' if params['task_id'].nil?
 
-  if ENV['RUBY_ENV'].nil? && ENV['RUBY_ENV'] == 'development'
+  if !ENV['RUBY_ENV'].nil? && ENV['RUBY_ENV'] == 'development'
+    puts 'Running in development mode.'\
+    ' Prepending ROOT_PATH to submission, assessment and output_path params.'
     root_path = ENV['ROOT_PATH']
+    params['output_path'] = "#{root_path}#{params['output_path']}"
     params['submission'] = "#{root_path}#{params['submission']}"
     params['assessment'] = "#{root_path}#{params['assessment']}"
   end
 
   puts params
 
+  output_path = params['output_path']
   submission = params['submission']
   assessment = params['assessment']
   timestamp = params['timestamp']
@@ -178,7 +182,7 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
 
   # TODO: Pass a param for tag name here
   result = run_assessment_script_via_docker output_loc
-  extract_result_files output_loc, task_id, timestamp
+  extract_result_files output_loc, output_path
 
 rescue Subscriber::ClientException => e
   cleanup_after_your_own_mess output_loc if skip_rm != 1
