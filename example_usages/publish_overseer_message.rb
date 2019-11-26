@@ -5,18 +5,16 @@ require_relative '../lib/bunny-pub-sub/publisher.rb'
 
 # Zip files are not committed to the repo.
 # Please request them if needed.
+task_id = 1
+timestamp = Time.now.utc.to_i
 msg = {
-  submission: "dev_files/dvnguyen-Practical\ Task\ 1.2.zip",
-  assessment: "dev_files/assessment.zip",
-  timestamp: Time.now.utc.to_i,
+  output_path: "overseer-pub-sub/results/#{task_id}/#{timestamp}",
+  submission: "overseer-pub-sub/dev_files/dvnguyen-Practical\ Task\ 1.2.zip",
+  assessment: "overseer-pub-sub/dev_files/assessment.zip",
+  timestamp: timestamp,
   zip_file: 1,
   # skip_rm: 1,
-  # TODO: Probably don't need this.
-  # :project_id => 1,
-
-  # task_id can come directly from
-  # POST '/projects/:id/task_def_id/:task_definition_id/submission' API.
-  task_id: 1
+  task_id: task_id
 }
 
 config = {
