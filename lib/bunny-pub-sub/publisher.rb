@@ -29,14 +29,16 @@ class Publisher
 
   def create_channel
     @channel = @connection.create_channel
+    @channel.confirm_select if @publisher_confirms
   end
 
   def set_topic_exchange
     @exchange = @channel.topic(@config[:EXCHANGE_NAME], durable: true)
   end
 
-  def connect_publisher
+  def connect_publisher(publisher_confirms = true)
     start_connection
+    @publisher_confirms = publisher_confirms
     create_channel
     set_topic_exchange
   end
@@ -61,7 +63,16 @@ class Publisher
     end
 
     @exchange.publish(msg.to_json, routing_key: routing_key || @config[:ROUTING_KEY], persistent: true)
-    puts ' [x] Message sent!'
+    return puts ' [x] Message sent!' unless @publisher_confirms
+
+    success = @channel.wait_for_confirms
+    return puts ' [x] Message sent!' if success
+
+    @channel.nacked_set.each do |n|
+      # Do something with the nacked message ID
+      # TODO: Add a yielding block to this
+      puts " [x] Message #{n} failed."
+    end
   end
 
   def close_channel
