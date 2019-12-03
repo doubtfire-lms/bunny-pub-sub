@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require 'zip'
+require 'securerandom'
 
-def ack_result(results_publisher, value, task_id, timestamp)
+def ack_result(results_publisher, value, task_id, timestamp, output_path)
   return if results_publisher.nil?
 
-  msg = { message: value, task_id: task_id, timestamp: timestamp }
+  msg = { task_id: task_id, timestamp: timestamp }
 
   results_publisher.connect_publisher
   results_publisher.publish_message msg
@@ -48,7 +49,7 @@ end
 
 def get_docker_task_execution_path
   # Docker volumes needs absolute source and destination paths
-  "#{Dir.pwd}/lazarus_pit"
+  "#{Dir.pwd}/app"
 end
 
 ##################################################################
@@ -86,21 +87,92 @@ def run_assessment_script(path)
   result
 end
 
-def run_assessment_script_via_docker(host_path, tag = 'overseer/dotnet:2.2')
+def run_assessment_script_via_docker(host_path, output_path, random_string, command, tag = 'overseer/dotnet:2.2')
   client_error!({ error: "A valid Docker image name:tag is needed" }, 400) if tag.nil? || tag.to_s.strip.empty?
 
   puts 'Running docker executable..'
-  result = { run_result_message: `docker run -v#{host_path}:/lazarus_pit --rm #{tag}` }
+
+  # TODO: Security:
+  # Pass random filename... both `blah.txt` and `blah.yaml`
+  # Permit write access ONLY to these files
+  # Other security like no network access, capped execution time + resources, etc
+
+  # test:
+  # -m 100MB done
+  # --stop-timeout 10 (seconds) (isn't for what I thought it was :))
+  # --network none (fails reading from https://api.nuget.org/v3/index.json)
+  # --read-only (FAILURE without correct exit code)
+  # https://docs.docker.com/engine/reference/run/#security-configuration
+  # https://docs.docker.com/engine/reference/run/#runtime-constraints-on-resources
+  # -u="overseer" (specify default non-root user)
+
+  # TODO: Change OUT_YAML to OUTPUT to decrease transparency.
+  result = {
+    run_result_message:
+    `docker run \
+    -m 100MB \
+    --restart no \
+    --mount type=bind,source=#{host_path},target=/app \
+    --rm #{tag} \
+    /bin/bash -c "#{command}"`
+  }
+  # -e"OUT_YAML=#{random_string}.yaml" \
+
+  puts "Docker container exit status code: #{$?.exitstatus}"
+
+  extract_result_files host_path, output_path, random_string, $?.exitstatus
+
+  if $?.exitstatus != 0
+    raise Subscriber::ServerException.new result, 500
+  end
+
   result
 end
 
 # Step 4
-def extract_result_files(s_path, output_path)
+def extract_result_files(s_path, output_path, random_string, exitstatus)
   client_error!({ error: "A valid output_path is needed" }, 400) if output_path.nil? || output_path.to_s.strip.empty?
 
   puts 'Extracting result file from the pit..'
   FileUtils.mkdir_p output_path
-  FileUtils.copy("#{s_path}/output.txt", output_path)
+
+  input_txt_file_name = "#{s_path}/#{random_string}.txt"
+  output_txt_file_name = "#{output_path}/output.txt"
+  input_yaml_file_name = "#{s_path}/#{random_string}.yaml"
+  output_yaml_file_name = "#{output_path}/output.yaml"
+
+  if File.exist? input_txt_file_name
+    File.open(input_txt_file_name, 'a') { |f|
+      f.puts "exit code: #{exitstatus}"
+    }
+
+    if File.exist? output_txt_file_name
+      to_append = File.read input_txt_file_name
+      File.open(output_txt_file_name, 'a') { |f|
+        f.puts ''
+        f.puts to_append
+      }
+    else
+      FileUtils.copy(input_txt_file_name, output_txt_file_name)
+    end
+
+    # FileUtils.rm input_txt_file_name
+  else
+    puts "Results file: #{s_path}/#{random_string}.txt does not exist"
+  end
+
+  # TODO: Combine yaml file keys `message` and `new_status`.
+  # Update status from `blah.yaml`... if it exists etc.
+  if File.exist? input_yaml_file_name
+    File.open(input_yaml_file_name, 'a') { |f|
+      f.puts "exit_code: #{exitstatus}"
+    }
+    FileUtils.copy(input_yaml_file_name, output_yaml_file_name)
+    FileUtils.rm input_yaml_file_name
+  else
+    puts "Results file: #{s_path}/#{random_string}.yaml does not exist"
+  end
+
 end
 
 # Step 5
@@ -108,8 +180,12 @@ def cleanup_after_your_own_mess(path)
   return if path.nil?
   return unless File.exist? path
 
-  puts 'Recursively force removing: ' + path
-  FileUtils.rm_rf path
+  puts "Recursively force removing: #{path}/*"
+  FileUtils.rm_rf(Dir.glob("#{path}/*"))
+end
+
+def clean_before_start(path)
+  cleanup_after_your_own_mess(path)
 end
 
 def valid_zip_file_param?(params)
@@ -118,11 +194,11 @@ end
 
 def receive(subscriber_instance, channel, results_publisher, delivery_info, _properties, params)
   params = JSON.parse(params)
-  return 'PARAM `output_path` is required' if params['output_path'].nil?
-  return 'PARAM `submission` is required' if params['submission'].nil?
-  return 'PARAM `assessment` is required' if params['assessment'].nil?
-  return 'PARAM `timestamp` is required' if params['timestamp'].nil?
-  return 'PARAM `task_id` is required' if params['task_id'].nil?
+  return subscriber_instance.client_error!({error: 'PARAM `output_path` is required'}, 400) if params['output_path'].nil?
+  return subscriber_instance.client_error!({error: 'PARAM `submission` is required'}, 400) if params['submission'].nil?
+  return subscriber_instance.client_error!({error: 'PARAM `assessment` is required'}, 400) if params['assessment'].nil?
+  return subscriber_instance.client_error!({error: 'PARAM `timestamp` is required'}, 400) if params['timestamp'].nil?
+  return subscriber_instance.client_error!({error: 'PARAM `task_id` is required'}, 400) if params['task_id'].nil?
 
   if !ENV['RUBY_ENV'].nil? && ENV['RUBY_ENV'] == 'development'
     puts 'Running in development mode.'\
@@ -166,40 +242,49 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
     subscriber_instance.client_error!({ error: "Invalid zip file: #{assessment}" }, 400)
   end
 
-  output_loc = get_docker_task_execution_path # get_task_path(task_id)
-  puts "Output loc: #{output_loc}"
-  FileUtils.mkdir_p output_loc
+  docker_pit_path = get_docker_task_execution_path # get_task_path(task_id)
+  puts "Docker execution path: #{docker_pit_path}"
+  unless File.exist? docker_pit_path
+    # TODO: Add correct permissions here
+    FileUtils.mkdir_p docker_pit_path
+  else
+    clean_before_start docker_pit_path
+  end
 
   skip_rm = params['skip_rm'] || 0
 
   if valid_zip_file_param? params
-    extract_submission submission, output_loc
+    extract_submission submission, docker_pit_path
   else
-    copy_student_files submission, output_loc
+    copy_student_files submission, docker_pit_path
   end
 
-  extract_assessment assessment, output_loc
+  extract_assessment assessment, docker_pit_path
 
-  # TODO: Pass a param for tag name here
-  result = run_assessment_script_via_docker output_loc
-  extract_result_files output_loc, output_path
+  random_string = "build-#{SecureRandom.hex}"
+  # TODO: Pass a param for a Docker image's tag
+  result = run_assessment_script_via_docker docker_pit_path, output_path, random_string, "chmod +x /app/build.sh && /app/build.sh #{random_string}.yaml >> /app/#{random_string}.txt"
+  random_string = "run-#{SecureRandom.hex}"
+  # TODO: Pass a param for a Docker image's tag
+  result = run_assessment_script_via_docker docker_pit_path, output_path, random_string, "chmod +x /app/run.sh && /app/run.sh #{random_string}.yaml >> /app/#{random_string}.txt"
 
 rescue Subscriber::ClientException => e
-  cleanup_after_your_own_mess output_loc if skip_rm != 1
+  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  subscriber_instance.client_error!({ error: e.message }, e.status)
+  puts e.message
+  subscriber_instance.client_error!({ error: e.message, task_id: task_id, timestamp: timestamp }, e.status)
 rescue Subscriber::ServerException => e
-  cleanup_after_your_own_mess output_loc if skip_rm != 1
+  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
-  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id, timestamp: timestamp }, 500)
 rescue StandardError => e
-  cleanup_after_your_own_mess output_loc if skip_rm != 1
+  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
-  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id }, 500)
+  subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id, timestamp: timestamp }, 500)
 else
-  cleanup_after_your_own_mess output_loc if skip_rm != 1
+  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  ack_result results_publisher, result, task_id, timestamp # unless results_publisher.nil?
+  ack_result results_publisher, result, task_id, timestamp, output_path
 end
