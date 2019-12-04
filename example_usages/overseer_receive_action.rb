@@ -4,6 +4,13 @@ require 'zip'
 require 'securerandom'
 require 'yaml'
 
+module Execution
+  RUN = 'run'
+  BUILD = 'build'
+  DOCKER_WORKDIR = 'app'
+  DOCKER_OUTDIR = 'var/lib/overseer'
+end
+
 def ack_result(results_publisher, task_id, timestamp, output_path)
   return if results_publisher.nil?
 
@@ -50,7 +57,12 @@ end
 
 def get_docker_task_execution_path
   # Docker volumes needs absolute source and destination paths
-  "#{Dir.pwd}/app"
+  "#{Dir.pwd}/#{Execution::DOCKER_WORKDIR}/sandbox"
+end
+
+def get_docker_task_output_path
+  # Docker volumes needs absolute source and destination paths
+  "#{Dir.pwd}/#{Execution::DOCKER_WORKDIR}/output"
 end
 
 ##################################################################
@@ -88,7 +100,7 @@ def run_assessment_script(path)
   result
 end
 
-def run_assessment_script_via_docker(host_path, output_path, random_string, command, tag)
+def run_assessment_script_via_docker(s_path, output_path, random_string, exec_mode, command, tag)
   client_error!({ error: "A valid Docker image name:tag is needed" }, 400) if tag.nil? || tag.to_s.strip.empty?
 
   puts 'Running docker executable..'
@@ -112,15 +124,24 @@ def run_assessment_script_via_docker(host_path, output_path, random_string, comm
     `docker run \
     -m 100MB \
     --restart no \
-    --mount type=bind,source=#{host_path},target=/app \
-    --rm #{tag} \
+    --volume #{s_path}:/#{Execution::DOCKER_WORKDIR} \
+    --volume #{get_docker_task_output_path}:/#{Execution::DOCKER_OUTDIR}\
+    --name container1 \
+    #{tag} \
     /bin/bash -c "#{command}"`
   }
-  # -e"OUT_YAML=#{random_string}.yaml" \
 
   puts "Docker container exit status code: #{$?.exitstatus}"
 
-  extract_result_files host_path, output_path, random_string, $?.exitstatus
+  extract_result_files get_docker_task_output_path, output_path, random_string, $?.exitstatus
+
+  diff_result = `docker diff container1`
+  puts "docker diff: \n#{!diff_result&.strip&.empty? ? diff_result : 'nothing changed' }"
+
+  extract_docker_diff_file output_path, diff_result, exec_mode
+
+  rm_container_result = `docker container rm container1`
+  puts "rm_container_result: #{rm_container_result}"
 
   if $?.exitstatus != 0
     raise Subscriber::ServerException.new result, 500
@@ -185,6 +206,10 @@ def extract_result_files(s_path, output_path, random_string, exitstatus)
 
 end
 
+def extract_docker_diff_file(output_path, diff, exec_mode)
+  File.write("#{output_path}/#{exec_mode}-diff.txt", diff)
+end
+
 # Step 5
 def cleanup_after_your_own_mess(path)
   return if path.nil?
@@ -204,6 +229,7 @@ end
 
 def receive(subscriber_instance, channel, results_publisher, delivery_info, _properties, params)
   params = JSON.parse(params)
+  return subscriber_instance.client_error!({error: 'PARAM `docker_image_name_tag` is required'}, 400) if params['docker_image_name_tag'].nil?
   return subscriber_instance.client_error!({error: 'PARAM `output_path` is required'}, 400) if params['output_path'].nil?
   return subscriber_instance.client_error!({error: 'PARAM `submission` is required'}, 400) if params['submission'].nil?
   return subscriber_instance.client_error!({error: 'PARAM `assessment` is required'}, 400) if params['assessment'].nil?
@@ -221,6 +247,7 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
 
   puts params
 
+  docker_image_name_tag = params['docker_image_name_tag']
   output_path = params['output_path']
   submission = params['submission']
   assessment = params['assessment']
@@ -271,21 +298,23 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
 
   extract_assessment assessment, docker_pit_path
 
-  random_string = "build-#{SecureRandom.hex}"
+  random_string = "#{Execution::BUILD}-#{SecureRandom.hex}"
   run_assessment_script_via_docker(
     docker_pit_path,
     output_path,
     random_string,
-    "chmod +x /app/build.sh && /app/build.sh #{random_string}.yaml >> /app/#{random_string}.txt",
-    'overseer/dotnet:2.2'
+    Execution::BUILD,
+    "chmod +x /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
+    docker_image_name_tag
   )
-  random_string = "run-#{SecureRandom.hex}"
+  random_string = "#{Execution::RUN}-#{SecureRandom.hex}"
   run_assessment_script_via_docker(
     docker_pit_path,
     output_path,
     random_string,
-    "chmod +x /app/run.sh && /app/run.sh #{random_string}.yaml >> /app/#{random_string}.txt",
-    'overseer/dotnet:2.2'
+    Execution::RUN,
+    "chmod +x /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
+    docker_image_name_tag
   )
 
 rescue Subscriber::ClientException => e
