@@ -7,8 +7,10 @@ require 'yaml'
 module Execution
   RUN = 'run'
   BUILD = 'build'
-  DOCKER_WORKDIR = 'app'
+  HOST_DIR = 'app'
+  DOCKER_WORKDIR = 'home/hermit/app'
   DOCKER_OUTDIR = 'var/lib/overseer'
+  CONTAINER_NAME = 'container1'
 end
 
 def ack_result(results_publisher, task_id, timestamp, output_path)
@@ -51,57 +53,49 @@ def extract_zip(input_zip_file_path, output_loc)
   end
 end
 
-def get_task_path(task_id)
-  "student_projects/task_#{task_id}"
+def host_output_path
+  # Docker volumes needs absolute source and destination paths
+  "#{Dir.pwd}/#{Execution::HOST_DIR}"
 end
 
-def get_docker_task_execution_path
+def host_exec_path
   # Docker volumes needs absolute source and destination paths
-  "#{Dir.pwd}/#{Execution::DOCKER_WORKDIR}/sandbox"
+  "#{Dir.pwd}/#{Execution::HOST_DIR}/sandbox"
 end
 
-def get_docker_task_output_path
+def host_output_path
   # Docker volumes needs absolute source and destination paths
-  "#{Dir.pwd}/#{Execution::DOCKER_WORKDIR}/output"
+  "#{Dir.pwd}/#{Execution::HOST_DIR}/output"
+end
+
+def force_remove_container
+  puts "Force removing container: #{Execution::CONTAINER_NAME}"
+  `docker container rm -vf #{Execution::CONTAINER_NAME}`
 end
 
 ##################################################################
 ##################################################################
 
-# Step 1 -- done
-def copy_student_files(s_path, d_path)
+# Step 1
+def copy_student_files(s_path)
   puts 'Copying submission files'
-  `cp -R #{s_path}/. #{d_path}`
+  `cp -R #{s_path}/. #{host_exec_path}`
 end
 
-def extract_submission(zip_file, d_path)
+def extract_submission(zip_file)
   puts 'Extracting submission from zip file'
-  extract_zip zip_file, d_path
+  extract_zip zip_file, host_exec_path
 end
 
-# Step 2 -- done
-def extract_assessment(zip_file, path)
-  extract_zip zip_file, path
+# Step 2
+def extract_assessment(zip_file)
+  extract_zip zip_file, host_exec_path
 end
 
 # Step 3
-def run_assessment_script(path)
-  rpath = "#{path}/run.sh"
-  unless File.exist? rpath
-    client_error!({ error: "File #{rpath} doesn't exist" }, 400)
-  end
-  result = {}
-
-  `chmod +x #{rpath}`
-
-  Dir.chdir path do
-    result = { run_result_message: `./run.sh` }
-  end
-  result
-end
-
-def run_assessment_script_via_docker(s_path, output_path, random_string, exec_mode, command, tag)
+def run_assessment_script_via_docker(output_path, random_string, exec_mode, command, tag)
   client_error!({ error: "A valid Docker image name:tag is needed" }, 400) if tag.nil? || tag.to_s.strip.empty?
+  force_remove_container
 
   puts 'Running docker executable..'
 
@@ -124,26 +118,22 @@ def run_assessment_script_via_docker(s_path, output_path, random_string, exec_mo
     `docker run \
     -m 100MB \
     --restart no \
-    --volume #{s_path}:/#{Execution::DOCKER_WORKDIR} \
-    --volume #{get_docker_task_output_path}:/#{Execution::DOCKER_OUTDIR}\
-    --name container1 \
+    --volume #{host_exec_path}:/#{Execution::DOCKER_WORKDIR} \
+    --volume #{host_output_path}:/#{Execution::DOCKER_OUTDIR} \
+    --name #{Execution::CONTAINER_NAME} \
     #{tag} \
     /bin/bash -c "#{command}"`
   }
 
-  puts "Docker container exit status code: #{$?.exitstatus}"
+  exitstatus = $?.exitstatus
+  extract_result_files host_output_path, output_path, random_string, $?.exitstatus
 
-  extract_result_files get_docker_task_output_path, output_path, random_string, $?.exitstatus
-
-  diff_result = `docker diff container1`
-  puts "docker diff: \n#{!diff_result&.strip&.empty? ? diff_result : 'nothing changed' }"
-
+  diff_result = `docker diff #{Execution::CONTAINER_NAME}`
   extract_docker_diff_file output_path, diff_result, exec_mode
 
-  rm_container_result = `docker container rm container1`
-  puts "rm_container_result: #{rm_container_result}"
+  puts "Docker run command execution status code: #{exitstatus}"
 
-  if $?.exitstatus != 0
+  if exitstatus != 0
     raise Subscriber::ServerException.new result, 500
   end
 end
@@ -160,6 +150,7 @@ def extract_result_files(s_path, output_path, random_string, exitstatus)
   input_yaml_file_name = "#{s_path}/#{random_string}.yaml"
   output_yaml_file_name = "#{output_path}/output.yaml"
 
+  # Process .txt file.
   if File.exist? input_txt_file_name
     File.open(input_txt_file_name, 'a') { |f|
       f.puts "exit code: #{exitstatus}"
@@ -180,7 +171,7 @@ def extract_result_files(s_path, output_path, random_string, exitstatus)
     puts "Results file: #{s_path}/#{random_string}.txt does not exist"
   end
 
-  # Update status from `blah.yaml`... if it exists etc.
+  # Process .yaml file.
   if File.exist? input_yaml_file_name
     File.open(input_yaml_file_name, 'a') { |f|
       f.puts "exit_code: #{exitstatus}"
@@ -206,21 +197,19 @@ def extract_result_files(s_path, output_path, random_string, exitstatus)
 
 end
 
-def extract_docker_diff_file(output_path, diff, exec_mode)
-  File.write("#{output_path}/#{exec_mode}-diff.txt", diff)
+# Step 5
+def extract_docker_diff_file(output_path, diff_result, exec_mode)
+  File.write("#{output_path}/#{exec_mode}-diff.txt", "docker diff: \n#{!diff_result&.strip&.empty? ? diff_result : 'nothing changed' }")
 end
 
-# Step 5
-def cleanup_after_your_own_mess(path)
+# Step 6
+def cleanup_host_parent_path
+  path = host_output_path
   return if path.nil?
   return unless File.exist? path
 
   puts "Recursively force removing: #{path}/*"
   FileUtils.rm_rf(Dir.glob("#{path}/*"))
-end
-
-def clean_before_start(path)
-  cleanup_after_your_own_mess(path)
 end
 
 def valid_zip_file_param?(params)
@@ -279,28 +268,26 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
     subscriber_instance.client_error!({ error: "Invalid zip file: #{assessment}" }, 400)
   end
 
-  docker_pit_path = get_docker_task_execution_path # get_task_path(task_id)
-  puts "Docker execution path: #{docker_pit_path}"
-  unless File.exist? docker_pit_path
-    # TODO: Add correct permissions here
-    FileUtils.mkdir_p docker_pit_path
-  else
-    clean_before_start docker_pit_path
+  puts "Docker execution path: #{host_exec_path}"
+  if File.exist? host_output_path
+    cleanup_host_parent_path
   end
+  # TODO: Add correct permissions here
+  FileUtils.mkdir_p host_exec_path
+  FileUtils.mkdir_p host_output_path
 
   skip_rm = params['skip_rm'] || 0
 
   if valid_zip_file_param? params
-    extract_submission submission, docker_pit_path
+    extract_submission submission
   else
-    copy_student_files submission, docker_pit_path
+    copy_student_files submission
   end
 
-  extract_assessment assessment, docker_pit_path
+  extract_assessment assessment
 
   random_string = "#{Execution::BUILD}-#{SecureRandom.hex}"
   run_assessment_script_via_docker(
-    docker_pit_path,
     output_path,
     random_string,
     Execution::BUILD,
@@ -309,7 +296,6 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
   )
   random_string = "#{Execution::RUN}-#{SecureRandom.hex}"
   run_assessment_script_via_docker(
-    docker_pit_path,
     output_path,
     random_string,
     Execution::RUN,
@@ -318,22 +304,21 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
   )
 
 rescue Subscriber::ClientException => e
-  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
   subscriber_instance.client_error!({ error: e.message, task_id: task_id, timestamp: timestamp }, e.status)
 rescue Subscriber::ServerException => e
-  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
   subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id, timestamp: timestamp }, 500)
 rescue StandardError => e
-  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   puts e.message
   subscriber_instance.server_error!({ error: 'Internal server error', task_id: task_id, timestamp: timestamp }, 500)
 else
-  cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
   ack_result results_publisher, task_id, timestamp, output_path
+ensure
+  cleanup_host_parent_path if skip_rm != 1
+  force_remove_container
 end
