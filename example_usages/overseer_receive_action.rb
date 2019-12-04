@@ -4,7 +4,7 @@ require 'zip'
 require 'securerandom'
 require 'yaml'
 
-def ack_result(results_publisher, value, task_id, timestamp, output_path)
+def ack_result(results_publisher, task_id, timestamp, output_path)
   return if results_publisher.nil?
 
   msg = { task_id: task_id, timestamp: timestamp }
@@ -88,7 +88,7 @@ def run_assessment_script(path)
   result
 end
 
-def run_assessment_script_via_docker(host_path, output_path, random_string, command, tag = 'overseer/dotnet:2.2')
+def run_assessment_script_via_docker(host_path, output_path, random_string, command, tag)
   client_error!({ error: "A valid Docker image name:tag is needed" }, 400) if tag.nil? || tag.to_s.strip.empty?
 
   puts 'Running docker executable..'
@@ -125,8 +125,6 @@ def run_assessment_script_via_docker(host_path, output_path, random_string, comm
   if $?.exitstatus != 0
     raise Subscriber::ServerException.new result, 500
   end
-
-  result
 end
 
 # Step 4
@@ -274,11 +272,21 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
   extract_assessment assessment, docker_pit_path
 
   random_string = "build-#{SecureRandom.hex}"
-  # TODO: Pass a param for a Docker image's tag
-  result = run_assessment_script_via_docker docker_pit_path, output_path, random_string, "chmod +x /app/build.sh && /app/build.sh #{random_string}.yaml >> /app/#{random_string}.txt"
+  run_assessment_script_via_docker(
+    docker_pit_path,
+    output_path,
+    random_string,
+    "chmod +x /app/build.sh && /app/build.sh #{random_string}.yaml >> /app/#{random_string}.txt",
+    'overseer/dotnet:2.2'
+  )
   random_string = "run-#{SecureRandom.hex}"
-  # TODO: Pass a param for a Docker image's tag
-  result = run_assessment_script_via_docker docker_pit_path, output_path, random_string, "chmod +x /app/run.sh && /app/run.sh #{random_string}.yaml >> /app/#{random_string}.txt"
+  run_assessment_script_via_docker(
+    docker_pit_path,
+    output_path,
+    random_string,
+    "chmod +x /app/run.sh && /app/run.sh #{random_string}.yaml >> /app/#{random_string}.txt",
+    'overseer/dotnet:2.2'
+  )
 
 rescue Subscriber::ClientException => e
   cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
@@ -298,5 +306,5 @@ rescue StandardError => e
 else
   cleanup_after_your_own_mess docker_pit_path if skip_rm != 1
   channel.ack(delivery_info.delivery_tag)
-  ack_result results_publisher, result, task_id, timestamp, output_path
+  ack_result results_publisher, task_id, timestamp, output_path
 end
