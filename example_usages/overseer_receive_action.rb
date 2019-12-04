@@ -2,6 +2,7 @@
 
 require 'zip'
 require 'securerandom'
+require 'yaml'
 
 def ack_result(results_publisher, value, task_id, timestamp, output_path)
   return if results_publisher.nil?
@@ -106,7 +107,6 @@ def run_assessment_script_via_docker(host_path, output_path, random_string, comm
   # https://docs.docker.com/engine/reference/run/#runtime-constraints-on-resources
   # -u="overseer" (specify default non-root user)
 
-  # TODO: Change OUT_YAML to OUTPUT to decrease transparency.
   result = {
     run_result_message:
     `docker run \
@@ -156,18 +156,30 @@ def extract_result_files(s_path, output_path, random_string, exitstatus)
       FileUtils.copy(input_txt_file_name, output_txt_file_name)
     end
 
-    # FileUtils.rm input_txt_file_name
+    FileUtils.rm input_txt_file_name
   else
     puts "Results file: #{s_path}/#{random_string}.txt does not exist"
   end
 
-  # TODO: Combine yaml file keys `message` and `new_status`.
   # Update status from `blah.yaml`... if it exists etc.
   if File.exist? input_yaml_file_name
     File.open(input_yaml_file_name, 'a') { |f|
       f.puts "exit_code: #{exitstatus}"
     }
-    FileUtils.copy(input_yaml_file_name, output_yaml_file_name)
+
+    if File.exist? output_yaml_file_name
+      output_yaml = YAML.load_file(output_yaml_file_name)
+      input_yaml = YAML.load_file(input_yaml_file_name)
+
+      # Merge yaml files.
+      output_yaml.merge! input_yaml
+      File.open(output_yaml_file_name, 'w') { |f|
+        f.puts output_yaml.to_yaml
+      }
+    else
+      FileUtils.copy(input_yaml_file_name, output_yaml_file_name)
+    end
+
     FileUtils.rm input_yaml_file_name
   else
     puts "Results file: #{s_path}/#{random_string}.yaml does not exist"
