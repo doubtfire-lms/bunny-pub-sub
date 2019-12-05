@@ -53,7 +53,7 @@ def extract_zip(input_zip_file_path, output_loc)
   end
 end
 
-def host_output_path
+def host_parent_path
   # Docker volumes needs absolute source and destination paths
   "#{Dir.pwd}/#{Execution::HOST_DIR}"
 end
@@ -115,7 +115,7 @@ def run_assessment_script_via_docker(output_path, random_string, exec_mode, comm
 
   result = {
     run_result_message:
-    `docker run \
+    `timeout 20 docker run \
     -m 100MB \
     --restart no \
     --volume #{host_exec_path}:/#{Execution::DOCKER_WORKDIR} \
@@ -204,7 +204,7 @@ end
 
 # Step 6
 def cleanup_host_parent_path
-  path = host_output_path
+  path = host_parent_path
   return if path.nil?
   return unless File.exist? path
 
@@ -268,8 +268,8 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
     subscriber_instance.client_error!({ error: "Invalid zip file: #{assessment}" }, 400)
   end
 
-  puts "Docker execution path: #{host_exec_path}"
-  if File.exist? host_output_path
+  puts "Docker execution path: #{host_parent_path}"
+  if File.exist? host_parent_path
     cleanup_host_parent_path
   end
   # TODO: Add correct permissions here
@@ -291,7 +291,7 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
     output_path,
     random_string,
     Execution::BUILD,
-    "chmod +x /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
+    "chmod u+x /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::BUILD}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
     docker_image_name_tag
   )
   random_string = "#{Execution::RUN}-#{SecureRandom.hex}"
@@ -299,7 +299,7 @@ def receive(subscriber_instance, channel, results_publisher, delivery_info, _pro
     output_path,
     random_string,
     Execution::RUN,
-    "chmod +x /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
+    "chmod u+x /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh && /#{Execution::DOCKER_WORKDIR}/#{Execution::RUN}.sh /#{Execution::DOCKER_OUTDIR}/#{random_string}.yaml >> /#{Execution::DOCKER_OUTDIR}/#{random_string}.txt",
     docker_image_name_tag
   )
 
