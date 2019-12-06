@@ -118,6 +118,7 @@ def run_assessment_script_via_docker(output_path, random_string, exec_mode, comm
     `timeout 20 docker run \
     -m 100MB \
     --restart no \
+    --cpus 1 \
     --volume #{host_exec_path}:/#{Execution::DOCKER_WORKDIR} \
     --volume #{host_output_path}:/#{Execution::DOCKER_OUTDIR} \
     --name #{Execution::CONTAINER_NAME} \
