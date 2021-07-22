@@ -24,7 +24,7 @@ class Publisher
   end
 
   def start_connection
-    @connection.start
+    ServicesManager.instance.start_connection(@connection, 0)
   end
 
   def create_channel

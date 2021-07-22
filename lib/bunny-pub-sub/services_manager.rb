@@ -78,6 +78,19 @@ class ServicesManager
     @clients.delete name
   end
 
+  def start_connection(connection, repeat)
+    (1 + repeat).times do 
+      begin
+        connection.start
+        return
+      rescue
+        puts 'Unable to start connection to rabbitmq -- delaying 10 seconds'
+        sleep(10) unless repeat == 0
+      end
+    end
+    raise "Unable to connect to rabbitmq"
+  end
+
   private
   def service_exists?(name)
     return true unless @clients[name].nil?
