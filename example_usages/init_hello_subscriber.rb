@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 
 require 'dotenv/load'
-require_relative 'ontrack_receive_action.rb'
 require_relative '../lib/bunny-pub-sub/subscriber.rb'
 require_relative '../lib/bunny-pub-sub/publisher.rb'
+
+def receive(_subscriber_instance, channel, _results_publisher, delivery_info, _properties, params)
+  # Do something meaningful here :)
+  puts "Hello World! #{params}"
+  # Acknowledge the message
+  channel.ack(delivery_info.delivery_tag)
+end
+
 
 subscriber_config = {
   RABBITMQ_HOSTNAME: ENV['RABBITMQ_HOSTNAME'],
   RABBITMQ_USERNAME: ENV['RABBITMQ_USERNAME'],
   RABBITMQ_PASSWORD: ENV['RABBITMQ_PASSWORD'],
-  EXCHANGE_NAME: ENV['EXCHANGE_NAME'],
-  DURABLE_QUEUE_NAME: 'q_assessment_results',
-  # No need to define BINDING_KEYS for now!
-  # In future, OnTrack will listen to
-  # topics related to PDF generation too.
-  # That is when we should have BINDING_KEYS defined.
-  # BINDING_KEYS: ENV['BINDING_KEYS'],
-
-  # This is enough for now:
-  DEFAULT_BINDING_KEY: '*.result'
+  EXCHANGE_NAME: 'hello_exchange', # Listen at the hello exchange
+  BINDING_KEYS: 'message.receive' # for message.receive
+  # DEFAULT_BINDING_KEY: 'message.*'
 }
 
 # Note:
