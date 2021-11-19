@@ -64,13 +64,9 @@ class Subscriber
 
     @subscriber_config = subscriber_config
     @results_publisher = results_publisher
-
-    puts @subscriber_config.inspect
   end
 
   def start_subscriber(callback)
-    puts @subscriber_config.inspect
-    
     @connection = Bunny.new(
       hostname: @subscriber_config[:RABBITMQ_HOSTNAME],
       username: @subscriber_config[:RABBITMQ_USERNAME],
