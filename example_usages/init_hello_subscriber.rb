@@ -17,8 +17,9 @@ subscriber_config = {
   RABBITMQ_USERNAME: ENV['RABBITMQ_USERNAME'],
   RABBITMQ_PASSWORD: ENV['RABBITMQ_PASSWORD'],
   EXCHANGE_NAME: 'hello_exchange', # Listen at the hello exchange
-  BINDING_KEYS: 'message.receive' # for message.receive
-  # DEFAULT_BINDING_KEY: 'message.*'
+  BINDING_KEYS: 'message.receive', # for message.receive
+  DURABLE_QUEUE_NAME: 'q.hello',
+  DEFAULT_BINDING_KEY: 'message.*'
 }
 
 # Note:
