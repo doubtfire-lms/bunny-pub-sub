@@ -11,3 +11,10 @@ DURABLE_QUEUE_NAME=q_csharp
 BINDING_KEYS=csharp
 DEFAULT_BINDING_KEY=default_env
 ```
+
+## Build process
+
+```bash
+gem build bunny-pub-sub.gemspec
+push bunny-pub-sub-0.5.0.gem
+```
