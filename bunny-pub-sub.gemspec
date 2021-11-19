@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
     s.name                  = 'bunny-pub-sub'
-    s.version               = '0.5.0'
+    s.version               = '0.5.1'
     s.homepage              = 'https://github.com/doubtfire-lms/bunny-pub-sub'
     s.date                  = '2021-11-19'
     s.summary               = 'bunny-pub-sub'
