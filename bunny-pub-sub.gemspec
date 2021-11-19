@@ -2,13 +2,13 @@
 
 Gem::Specification.new do |s|
     s.name                  = 'bunny-pub-sub'
-    s.version               = '0.0.9'
-    s.date                  = '2019-11-18'
+    s.version               = '0.5.0'
+    s.date                  = '2021-11-19'
     s.summary               = 'bunny-pub-sub'
     s.description           = 'Bunny publisher/subscriber client gem'\
                               'for OnTrack and Overseer.'
-    s.authors               = ['Akash Agarwal']
-    s.email                 = 'agarwal.akash333@gmail.com'
+    s.authors               = ['Akash Agarwal', 'Andrew Cain']
+    s.email                 = ['agarwal.akash333@gmail.com', 'macite@gmail.com']
     s.license               = 'MIT'
     s.required_ruby_version = '>= 2.3.1'
     s.files                 = ['lib/bunny-pub-sub/publisher.rb',
