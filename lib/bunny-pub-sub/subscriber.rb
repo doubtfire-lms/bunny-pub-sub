@@ -71,7 +71,7 @@ class Subscriber
       username: @subscriber_config[:RABBITMQ_USERNAME],
       password: @subscriber_config[:RABBITMQ_PASSWORD]
     )
-    ServicesManager.start_connection(@connection, 6)
+    ServicesManager.instance.start_connection(@connection, 6)
 
     @channel = @connection.create_channel
     # With the created communication @channel, create/join an existing exchange
