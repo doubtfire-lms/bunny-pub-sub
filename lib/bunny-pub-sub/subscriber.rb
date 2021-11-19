@@ -4,6 +4,7 @@ require 'bunny'
 require 'json'
 require_relative 'helper/config_checks'
 require_relative 'publisher'
+require_relative 'services_manager'
 
 class ErrorReporter < RuntimeError
   attr_reader :status
@@ -63,9 +64,13 @@ class Subscriber
 
     @subscriber_config = subscriber_config
     @results_publisher = results_publisher
+
+    puts @subscriber_config.inspect
   end
 
   def start_subscriber(callback)
+    puts @subscriber_config.inspect
+    
     @connection = Bunny.new(
       hostname: @subscriber_config[:RABBITMQ_HOSTNAME],
       username: @subscriber_config[:RABBITMQ_USERNAME],
